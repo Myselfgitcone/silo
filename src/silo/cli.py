@@ -54,23 +54,45 @@ def serve(
     host: str = typer.Option("127.0.0.1"),
     port: int = typer.Option(8000, envvar="PORT"),
 ) -> None:
-    """Run the MCP server. stdio for desktop clients, --http for a deployed server."""
+    """Run the MCP server. stdio for desktop clients, --http for the deployed server and page."""
+    import os
+
     from mcp.server.transport_security import TransportSecuritySettings
 
     from silo.server import build_server
 
     # stdout belongs to the protocol on stdio, so logs go to stderr.
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    server = build_server(_toolbox())
+    toolbox = _toolbox()
+    server = build_server(toolbox)
     if not http:
         server.run()
         return
 
-    hosts = [h.strip() for h in get_settings().allowed_hosts.split(",") if h.strip()]
+    from anthropic import AsyncAnthropic
+    from dotenv import load_dotenv
+
+    from silo.budget import Budget
+    from silo.web import Web
+
+    load_dotenv()
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    settings = get_settings()
+    budget = Budget(Path(settings.state_dir) / "spend.json", settings.daily_budget_usd)
+    llm = AsyncAnthropic() if os.environ.get("ANTHROPIC_API_KEY") else None
+    if llm is None:
+        logging.warning("ANTHROPIC_API_KEY is not set: /mcp works, the analyst page is read-only")
+    Web(toolbox, settings, budget, llm).register(server)
+
+    # Railway sets RAILWAY_PUBLIC_DOMAIN; the MCP endpoint only answers to known hosts.
+    hosts = [h.strip() for h in settings.allowed_hosts.split(",") if h.strip()]
+    if os.environ.get("RAILWAY_PUBLIC_DOMAIN"):
+        hosts.append(os.environ["RAILWAY_PUBLIC_DOMAIN"])
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=[*hosts, f"localhost:{port}", f"127.0.0.1:{port}"],
-        allowed_origins=[f"https://{h}" for h in hosts],
+        allowed_origins=[f"https://{h}" for h in hosts] + [f"http://localhost:{port}"],
     )
     server.run(
         "streamable-http",

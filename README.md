@@ -17,7 +17,7 @@ Grainflow daily build ──► gold tables as Parquet + manifest.json (served b
                          run_query · data_freshness
                                          │  MCP (stdio or Streamable HTTP)
                                          ▼
-                   any MCP client, or the Silo agent (next step)
+              any MCP client, the Silo agent, or the public page
 ```
 
 ## Why it's built this way
@@ -101,6 +101,27 @@ first real run caught the agent calling Iowa the top corn state when four
 states were higher; the fix was to let the database rank (`order` and `limit`
 on `query_metric`) instead of the model reading rows by eye.
 
+## The public page
+
+`silo serve --http` serves three things from one process: the MCP endpoint at
+`/mcp`, a chat page at `/`, and `/api/ask` behind it. The model key stays on
+the server. Spend has three limits:
+
+- the five example questions are answered once per lake build and cached,
+- free-text questions are limited per visitor (`SILO_ASKS_PER_HOUR`, default 6),
+- the daily budget stops the model for everyone once it's spent.
+
+Every answer on the page shows each tool call, any refusal with its reason, the
+SQL, tokens, cost and latency.
+
+### Deploy on Railway
+
+The Dockerfile runs `silo serve --http`. In Railway: new project from this repo,
+add `ANTHROPIC_API_KEY` as a variable, and generate a public domain. Railway
+sets `PORT` and `RAILWAY_PUBLIC_DOMAIN`, which Silo uses for the port and the
+MCP host check. The spend ledger lives in the container, so a redeploy resets
+the day's count; mount a volume at `/app/.silo` to keep it.
+
 ## Run it
 
 ```bash
@@ -140,4 +161,4 @@ metric compiling and running, and the tools end to end over an in-process MCP cl
 - [x] Lake export in Grainflow, metrics layer, SQL guard, MCP server
 - [x] Agent loop with a per-day cost budget and tracing
 - [x] Eval suite in CI: questions with known answers, fail the PR if accuracy drops
-- [ ] Chat UI on Vercel, server on Railway
+- [x] Public page and MCP endpoint on Railway

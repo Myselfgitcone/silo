@@ -129,6 +129,7 @@ def test_a_rejected_query_goes_back_to_the_model_to_fix(run):
     assert rejection["is_error"] is True
     assert "read-only" in rejection["content"]
     assert [s.ok for s in answer.steps] == [False, True]
+    assert answer.steps[0].summary.startswith("Only SELECT queries are allowed")
     assert answer.sql == ["select count(*) as n from fct_price_daily"]
 
 

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Silo · Ask the grain lakehouse</title>
+  <meta name="description" content="An AI analyst over the Grainflow lakehouse. Every answer shows the SQL behind it, and it can't change the data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f7f1; --surface: #ffffff; --ink: #15231a; --muted: #5d6a5f; --line: #d8ded2;
+      --leaf: #2e7d4f; --leaf-soft: #dcebdf; --red: #b23a2b; --red-soft: #f8e1dd; --corn: #b07a00;
+      --code-bg: #f0f3ec;
+      --field: #12251a; --field-2: #1a3324; --field-ink: #eef3ea; --field-muted: #a5b5a7;
+      --kernel: #f2b630; --sprout: #7dd3a0;
+      --display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+      --body: "IBM Plex Sans", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1712; --surface: #16211a; --ink: #e9efe6; --muted: #9faea1; --line: #2a3a2f;
+        --leaf: #5bc48a; --leaf-soft: #1d3626; --red: #ef7a66; --red-soft: #3a1f1a; --corn: #f2b630;
+        --code-bg: #111b14; --field: #0b160f; --field-2: #13241a;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-underline-offset: 3px; }
+    :focus-visible { outline: 2px solid var(--kernel); outline-offset: 3px; border-radius: 6px; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+    .hidden { display: none !important; }
+
+    .hero { background: radial-gradient(120% 100% at 90% 0%, var(--field-2), var(--field) 65%); color: var(--field-ink); padding-bottom: 40px; }
+    .nav { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 22px; font-size: 15px; }
+    .mark { font: 700 20px/1 var(--display); text-decoration: none; display: inline-flex; align-items: center; gap: 10px; }
+    .mark svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 20px; }
+    .nav-links a { color: var(--field-muted); text-decoration: none; white-space: nowrap; }
+    .nav-links a:hover { color: var(--field-ink); }
+    h1 { font: 800 clamp(36px, 6vw, 60px)/1.03 var(--display); letter-spacing: -.035em; margin: 56px 0 16px; max-width: 16ch; }
+    .lede { color: var(--field-muted); font-size: 19px; max-width: 56ch; margin: 0 0 30px; }
+
+    form { display: flex; gap: 10px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(238, 243, 234, .16); border-radius: 14px; padding: 8px; }
+    form:focus-within { border-color: var(--kernel); }
+    input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--field-ink); font: inherit; padding: 8px 10px; }
+    input::placeholder { color: var(--field-muted); }
+    input:focus { outline: none; }
+    button.ask { background: var(--kernel); color: #1d1405; border: 0; border-radius: 10px; font: 600 16px var(--body); padding: 10px 20px; cursor: pointer; }
+    button.ask:disabled { opacity: .55; cursor: progress; }
+    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .presets button { background: transparent; color: var(--field-ink); border: 1px solid rgba(238, 243, 234, .22); border-radius: 999px; font: 400 14px var(--body); padding: 7px 14px; cursor: pointer; text-align: left; }
+    .presets button:hover { border-color: var(--kernel); }
+    .presets button:disabled { opacity: .5; cursor: progress; }
+    .status { margin: 18px 0 0; font-size: 14px; color: var(--field-muted); }
+
+    main section { padding-top: 44px; }
+    h2 { font: 700 26px/1.2 var(--display); letter-spacing: -.02em; margin: 0 0 10px; }
+    h3 { font: 700 17px/1.3 var(--display); margin: 0 0 10px; }
+    .muted { color: var(--muted); }
+
+    .result { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px 28px; }
+    .asked { font: 600 15px var(--body); color: var(--muted); margin: 0 0 14px; }
+    .answer { font-size: 18px; }
+    .answer p { margin: 0 0 12px; }
+    .answer table { border-collapse: collapse; font-size: 15px; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
+    .answer th, .answer td { border-bottom: 1px solid var(--line); padding: 5px 14px 5px 0; text-align: left; }
+    .answer code { font: 14px var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+    .waiting { display: flex; align-items: center; gap: 12px; color: var(--muted); }
+    .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--leaf); animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: var(--red); background: var(--red-soft); border-radius: 10px; padding: 12px 16px; margin: 0; }
+
+    .trail { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
+    .steps li { counter-increment: step; display: grid; grid-template-columns: 26px 1fr; gap: 4px 10px; padding: 8px 0; }
+    .steps li::before { content: counter(step); font: 500 13px var(--mono); color: var(--muted); padding-top: 2px; }
+    .step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-size: 15px; }
+    .step-head b { font: 500 15px var(--mono); }
+    .pill { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 9px; }
+    .pill.ok { color: var(--leaf); background: var(--leaf-soft); }
+    .pill.no { color: var(--red); background: var(--red-soft); }
+    .step-note { color: var(--muted); font-size: 14px; }
+    .reason { grid-column: 2; color: var(--red); font-size: 14px; }
+    pre { grid-column: 2; margin: 6px 0 0; background: var(--code-bg); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font: 13.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
+    .meta { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .badge { color: var(--leaf); font-weight: 600; }
+
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+    .two p { margin: 0 0 12px; color: var(--muted); font-size: 16px; }
+    .endpoint { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 14px; font: 14px var(--mono); overflow-x: auto; }
+    .endpoint span { flex: 1; white-space: nowrap; }
+    .copy { background: var(--leaf-soft); color: var(--leaf); border: 0; border-radius: 8px; font: 600 13px var(--body); padding: 6px 12px; cursor: pointer; }
+    .guards { list-style: none; margin: 0; padding: 0; }
+    .guards li { padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 16px; color: var(--muted); }
+    .guards b { color: var(--ink); font-weight: 600; }
+
+    footer { margin-top: 64px; padding: 26px 0 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    @media (max-width: 720px) {
+      .two { grid-template-columns: 1fr; }
+      .nav-links .wide { display: none; }
+      .result { padding: 20px; }
+      form { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <nav class="wrap nav" aria-label="Site">
+      <a class="mark" href="/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9a7 4 0 0 1 14 0v11H5z" fill="#f2b630"/><path d="M5 9a7 4 0 0 1 14 0" fill="none" stroke="#12251a" stroke-width="1.4"/><path d="M9 20v-5h6v5" fill="#12251a"/></svg>
+        Silo
+      </a>
+      <div class="nav-links">
+        <a href="#" id="hub-link" class="hidden">All projects</a>
+        <a href="#" id="grainflow-link" class="wide">Grainflow dashboard</a>
+        <a href="https://github.com/Myselfgitcone/silo">Code on GitHub</a>
+      </div>
+    </nav>
+    <div class="wrap">
+      <h1>Ask the grain lakehouse.</h1>
+      <p class="lede">An AI analyst that answers from Grainflow's corn, soybean and wheat data.
+        It shows the SQL behind every number, and it can't change anything.</p>
+      <form id="ask-form">
+        <label for="question" class="hidden">Your question</label>
+        <input id="question" name="question" maxlength="300" autocomplete="off"
+               placeholder="e.g. Which corn states improved since August?">
+        <button class="ask" type="submit" id="ask-button">Ask</button>
+      </form>
+      <div class="presets" id="presets" aria-label="Example questions"></div>
+      <p class="status" id="status">Loading…</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="result-section" class="hidden" aria-live="polite">
+      <div class="result" id="result"></div>
+    </section>
+
+    <section>
+      <div class="two">
+        <div>
+          <h2>Use it from your own tools</h2>
+          <p>Silo is an MCP server, so any MCP client can query the same lake with the same
+            guardrails. Point it at this endpoint:</p>
+          <div class="endpoint"><span id="mcp-url">/mcp</span><button class="copy" type="button" data-copy="mcp-url">Copy</button></div>
+          <p style="margin-top:14px">Tools: list_tables, describe_table, list_metrics, query_metric,
+            run_query and data_freshness. All read-only.</p>
+        </div>
+        <div>
+          <h2>Why you can trust the numbers</h2>
+          <ul class="guards">
+            <li><b>Named metrics first.</b> Ratings must pick a crop and stay in USDA's 18 states; prices must pick a contract.</li>
+            <li><b>Two locks on SQL.</b> A parser allows one read-only SELECT, and the engine itself can't read files or the network.</li>
+            <li><b>Tested on every change.</b> 13 questions with answers computed from the data must pass before a PR merges.</li>
+            <li><b>Bounded cost.</b> Example answers are cached daily; free questions share a small daily budget.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <span>Built by Jagadish Butukuri. <a href="https://github.com/Myselfgitcone/silo">Source on GitHub</a>.</span>
+      <span>Data: Yahoo Finance (delayed), NOAA/NWS, USDA NASS. Not investment advice.</span>
+    </footer>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
