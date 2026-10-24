@@ -4,6 +4,17 @@ const $ = (id) => document.getElementById(id);
 let config = null;
 let busy = false;
 
+// "Oct 24, 4:12 PM CDT" in the reader's own time zone.
+const stamp = (iso) =>
+  new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+
+// "Oct 23" for a calendar date; parsed as local so it doesn't shift a day west of UTC.
+const day = (iso) => {
+  if (!iso) return "unknown";
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], { month: "short", day: "numeric" });
+};
+
 const money = (v) => `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`;
 
 function render(markdown) {
@@ -31,13 +42,14 @@ function updateStatus(spent) {
     $("status").textContent = "The analyst is offline right now. The MCP endpoint below still works.";
     return;
   }
-  const built = config.lake_built_at
-    ? new Date(config.lake_built_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })
-    : "unknown";
-  $("status").textContent =
-    `Data rebuilt ${built}. Examples are free; your own questions share a ` +
-    `${money(config.daily_budget)} daily budget (${money(spent ?? config.spent_today)} used today), ` +
-    `${config.asks_per_hour} per hour.`;
+  const updated = config.lake_built_at ? stamp(config.lake_built_at) : "unknown";
+  $("status").replaceChildren(
+    `Last updated ${updated} · prices through ${day(config.prices_through)} · ` +
+      `USDA week ending ${day(config.usda_week_ending)}`,
+    el("br"),
+    `Examples are free; your own questions share a ${money(config.daily_budget)} daily budget ` +
+      `(${money(spent ?? config.spent_today)} used today), ${config.asks_per_hour} per hour.`,
+  );
 }
 
 function showWaiting(question) {

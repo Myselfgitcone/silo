@@ -33,6 +33,7 @@ def test_page_and_config(make_client):
     assert [p["id"] for p in config["presets"]] == list(PRESETS)
     assert config["analyst_online"] is True
     assert config["lake_built_at"]
+    assert (config["prices_through"], config["usda_week_ending"]) == ("2026-09-11", "2026-08-30")
 
 
 def test_presets_are_answered_once_per_lake_build(make_client):
