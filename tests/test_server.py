@@ -46,3 +46,9 @@ def test_rejections_reach_the_agent_with_their_reason(toolbox):
     result = call(build_server(toolbox), "run_query", {"sql": "drop table fct_price_daily"})
     assert result.is_error
     assert "read-only" in result.content[0].text
+
+
+def test_sql_errors_reach_the_agent_with_the_fix(toolbox):
+    result = call(build_server(toolbox), "run_query", {"sql": "select close from fct_price_daily"})
+    assert result.is_error
+    assert "close_price" in result.content[0].text

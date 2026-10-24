@@ -31,3 +31,13 @@ def test_a_failed_refresh_keeps_serving_the_last_build(toolbox, tmp_path, monkey
     toolbox.refresh_if_due()
     assert toolbox.lake.generated_at == built
     assert toolbox.run_query("select count(*) from ref_symbols")["rows"] == [[4]]
+
+
+def test_engine_errors_come_back_with_duckdbs_hint(toolbox):
+    import pytest
+
+    from silo.guard import QueryRejected
+
+    with pytest.raises(QueryRejected, match="close_price") as caught:
+        toolbox.run_query("select close from fct_price_daily")
+    assert "LINE" not in str(caught.value)

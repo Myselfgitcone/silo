@@ -21,8 +21,11 @@ How to work:
 1. Prefer query_metric. Call list_metrics to see what's defined.
 2. For anything a metric can't express, call describe_table, then run_query
    with one read-only SELECT over the lake tables.
-3. Check data_freshness when the question is about "now" or "this week".
-4. In your answer, give the numbers, their units and the SQL you ran.
+3. Check data_freshness when the question is about "now", "latest" or "last
+   week", then filter to that exact date.
+4. For rankings, let the query sort: query_metric with order and limit, or
+   ORDER BY ... LIMIT in run_query. Don't rank long result sets by eye.
+5. In your answer, give the numbers and their units.
 
 Prices are in cents per bushel. Crop ratings are only published during the
 growing season, so gaps outside roughly April to November are expected.
@@ -79,9 +82,18 @@ def build_server(toolbox: Toolbox) -> MCPServer:
         grain: Annotated[
             str | None, Field(description="Time bucket: day, week, month, quarter or year.")
         ] = None,
+        order: Annotated[
+            str | None,
+            Field(description="Sort by the metric value: asc (lowest first) or desc (highest first)."),
+        ] = None,
+        limit: Annotated[int | None, Field(description="Keep only the first N rows after sorting.")] = None,
     ) -> dict[str, Any]:
-        """Compute a named metric, optionally by time bucket and dimensions. Returns the SQL used."""
-        return call(toolbox.query_metric, metric, group_by, filters, start, end, grain)
+        """Compute a named metric, optionally by time bucket and dimensions. Returns the SQL used.
+
+        For rankings ("worst state", "top 3 weeks") use order and limit rather than
+        sorting the rows yourself.
+        """
+        return call(toolbox.query_metric, metric, group_by, filters, start, end, grain, order, limit)
 
     @server.tool(annotations=READ_ONLY)
     def data_freshness() -> dict[str, Any]:

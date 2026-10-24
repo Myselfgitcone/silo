@@ -7,9 +7,12 @@ testable without a protocol in the way.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Any
+
+import duckdb
 
 from silo.guard import QueryRejected, check
 from silo.lake import Lake, LakeUnavailable
@@ -70,7 +73,12 @@ class Toolbox:
 
     def run_query(self, sql: str) -> dict[str, Any]:
         checked = check(sql, set(self.lake.tables), self.settings.max_rows)
-        result = self.lake.execute(checked.sql, self.settings.query_timeout_s)
+        try:
+            result = self.lake.execute(checked.sql, self.settings.query_timeout_s)
+        except duckdb.Error as error:
+            # DuckDB's message says what's wrong and often how to fix it
+            # ("Candidate bindings: close_price"), so the agent gets it verbatim.
+            raise QueryRejected(f"The query failed: {_engine_message(error)}") from None
         truncated = len(result.rows) > self.settings.max_rows
         return {
             "sql": sql.strip(),
@@ -92,11 +100,13 @@ class Toolbox:
         start: str | None = None,
         end: str | None = None,
         grain: str | None = None,
+        order: str | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         found = self.metrics.get(metric)
         if found is None:
             raise QueryRejected(f"There's no metric named {metric}. Metrics: {', '.join(self.metrics)}.")
-        sql = compile_metric(found, group_by, filters, start, end, grain)
+        sql = compile_metric(found, group_by, filters, start, end, grain, order, limit)
         return {"metric": found.describe(), **self.run_query(sql)}
 
     def data_freshness(self) -> dict[str, Any]:
@@ -126,3 +136,9 @@ class Toolbox:
                 {"contract": c, "reason": r, "records": n} for c, r, n in quarantined
             ],
         }
+
+
+def _engine_message(error: Exception) -> str:
+    """DuckDB's error without the echoed query, which only repeats our row cap."""
+    message = str(error).split("\n\nLINE ")[0]
+    return re.sub(r"\s+", " ", message).strip()

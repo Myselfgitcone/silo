@@ -30,6 +30,10 @@ lakehouse through your tools, and only from what they return.
 - If the data can't answer the question, say so and say what is available.
 - Answer in a few sentences: the finding first, with numbers and units, then
   any caveat that changes how to read it. No preamble.
+- Don't repeat SQL, table or tool names; the queries are shown to the reader
+  separately.
+- If asked to change or delete data, say in one sentence that you have
+  read-only access, and stop.
 """
 
 # Tool results go back into the prompt; keep a runaway result from eating it.
@@ -56,6 +60,7 @@ class Answer:
     cost_usd: float = 0.0
     latency_ms: int = 0
     stopped_early: bool = False
+    cut_off: bool = False
 
     @property
     def sql(self) -> list[str]:
@@ -103,6 +108,9 @@ async def ask(question: str, mcp: Client, llm, settings: Settings, budget: Budge
         calls = [b for b in response.content if b.type == "tool_use"]
         if response.stop_reason != "tool_use" or not calls:
             answer.text = "".join(b.text for b in response.content if b.type == "text").strip()
+            if response.stop_reason == "max_tokens":
+                answer.cut_off = True
+                answer.text += "\n\n*(Answer cut off at the output limit.)*"
             break
 
         results = []
@@ -147,7 +155,8 @@ async def _run_tool(mcp: Client, name: str, arguments: dict[str, Any]) -> tuple[
 
     payload = _json(text)
     summary, sql = name, None
-    if isinstance(payload, dict) and "rows" in payload:
+    # Query results carry a list of rows; describe_table's "rows" is a count.
+    if isinstance(payload, dict) and isinstance(payload.get("rows"), list):
         sql = payload.get("sql")
         cut = " (truncated)" if payload.get("truncated") else ""
         summary = f"{payload.get('row_count', len(payload['rows']))} rows{cut}"
