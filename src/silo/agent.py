@@ -17,7 +17,7 @@ from typing import Any
 
 from mcp import Client
 
-from silo.budget import Budget, BudgetExceeded, Usage
+from silo.budget import Budget, Usage
 from silo.settings import Settings
 
 SYSTEM = """\
@@ -70,11 +70,11 @@ async def answer(question: str, server: Any, llm, settings: Settings, budget: Bu
     async with Client(server) as mcp:
         try:
             return await ask(question, mcp, llm, settings, budget)
-        except BudgetExceeded as error:
-            stopped = error
-    # Raised after the client closes, so callers see BudgetExceeded rather than
+        except Exception as error:
+            failed = error
+    # Raised after the client closes, so callers get the real error rather than
     # the ExceptionGroup the client's task group would wrap it in.
-    raise stopped
+    raise failed
 
 
 async def ask(question: str, mcp: Client, llm, settings: Settings, budget: Budget) -> Answer:
@@ -157,10 +157,22 @@ async def _run_tool(mcp: Client, name: str, arguments: dict[str, Any]) -> tuple[
 
 
 def _as_param(block) -> dict[str, Any]:
-    """Echo a response block back in request form, without response-only fields."""
-    if block.type == "tool_use":
-        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
-    return {"type": "text", "text": block.text}
+    """Echo a response block back in request form, without response-only fields.
+
+    Thinking blocks must go back unchanged, signature included, or the API
+    rejects the next turn of a tool-use conversation.
+    """
+    match block.type:
+        case "text":
+            return {"type": "text", "text": block.text}
+        case "tool_use":
+            return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+        case "thinking":
+            return {"type": "thinking", "thinking": block.thinking, "signature": block.signature}
+        case "redacted_thinking":
+            return {"type": "redacted_thinking", "data": block.data}
+        case _:
+            return block.model_dump(mode="json", exclude_none=True)
 
 
 def _json(text: str) -> Any:

@@ -129,7 +129,7 @@ def ask(
     from pathlib import Path
 
     import anyio
-    from anthropic import AsyncAnthropic
+    from anthropic import APIError, AsyncAnthropic
     from dotenv import load_dotenv
     from rich.markdown import Markdown
 
@@ -138,6 +138,8 @@ def ask(
     from silo.server import build_server
 
     load_dotenv()
+    # One log line per API call drowns the answer; errors still surface.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     if not os.environ.get("ANTHROPIC_API_KEY"):
         _fail("Set ANTHROPIC_API_KEY in your shell or .env first.")
     settings = get_settings()
@@ -148,6 +150,8 @@ def ask(
         answer = anyio.run(run_agent, question, build_server(toolbox), AsyncAnthropic(), settings, budget)
     except BudgetExceeded as error:
         _fail(str(error))
+    except APIError as error:
+        _fail(f"The model API returned an error: {error}")
 
     console.print(Markdown(answer.text))
     if show_trace:
