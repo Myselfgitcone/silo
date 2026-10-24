@@ -100,3 +100,26 @@ def test_rate_limiter_window():
     assert limiter.retry_after("a", now=20) == 40
     assert limiter.allow("a", now=61)
     assert limiter.allow("b", now=20)
+
+
+def test_unexpected_errors_return_a_readable_message(make_client):
+    class Broken(ScriptedModel):
+        async def create(self, **request):
+            raise PermissionError("state folder is read-only")
+
+    response = make_client(Broken()).post("/api/ask", json={"question": "Anything?"})
+    assert response.status_code == 500
+    assert response.json()["error"] == "Something went wrong on the server. It's been logged."
+
+
+def test_serve_refuses_to_start_without_a_writable_state_folder(tmp_path):
+    import typer
+
+    from silo.cli import _check_writable
+
+    blocked = tmp_path / "file"
+    blocked.write_text("not a folder")
+    with pytest.raises(typer.Exit):
+        _check_writable(blocked / "state")
+    _check_writable(tmp_path / "ok")  # creates it
+    assert (tmp_path / "ok").is_dir()

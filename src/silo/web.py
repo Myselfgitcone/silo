@@ -160,6 +160,9 @@ class Web:
             except APIError as error:
                 log.warning("model API error: %s", error)
                 return _error(502, "The model API had a problem. Try again in a minute.")
+            except Exception:
+                log.exception("unexpected error answering %r", question)
+                return _error(500, "Something went wrong on the server. It's been logged.")
         return JSONResponse(self._payload(reply, cached))
 
     def _payload(self, reply: Answer, cached: bool) -> dict[str, Any]:

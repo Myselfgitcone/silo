@@ -116,11 +116,15 @@ SQL, tokens, cost and latency.
 
 ### Deploy on Railway
 
-The Dockerfile runs `silo serve --http`. In Railway: new project from this repo,
-add `ANTHROPIC_API_KEY` as a variable, and generate a public domain. Railway
-sets `PORT` and `RAILWAY_PUBLIC_DOMAIN`, which Silo uses for the port and the
-MCP host check. The spend ledger lives in the container, so a redeploy resets
-the day's count; mount a volume at `/app/.silo` to keep it.
+The Dockerfile runs `silo serve --http` as an unprivileged user that can write
+only `/app/.silo`. In Railway: new project from this repo, add
+`ANTHROPIC_API_KEY` as a variable, and generate a public domain pointed at the
+port the deploy log shows Uvicorn listening on (Railway's `PORT`, usually
+8080). Silo also reads `RAILWAY_PUBLIC_DOMAIN` for the MCP host check.
+
+The spend ledger lives in the container, so a redeploy resets the day's count;
+mount a volume at `/app/.silo` to keep it. The server refuses to start if it
+can't write there, since the budget can't be enforced without its ledger.
 
 ## Run it
 
