@@ -123,3 +123,27 @@ def test_serve_refuses_to_start_without_a_writable_state_folder(tmp_path):
         _check_writable(blocked / "state")
     _check_writable(tmp_path / "ok")  # creates it
     assert (tmp_path / "ok").is_dir()
+
+
+def test_a_new_lake_build_reaches_the_page_and_resets_the_cache(make_client, toolbox, tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    from tests.conftest import FIXTURE_LAKE
+
+    model = ScriptedModel(reply(text("Old build answer.")), reply(text("New build answer.")))
+    client = make_client(model)
+    assert client.post("/api/ask", json={"preset": "signal"}).json()["text"] == "Old build answer."
+
+    newer = tmp_path / "newer-lake"
+    shutil.copytree(FIXTURE_LAKE, newer)
+    manifest = json.loads((newer / "manifest.json").read_text())
+    manifest["generated_at"] = "2099-01-01T00:00:00+00:00"
+    (newer / "manifest.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(toolbox.lake, "source", str(newer))
+    monkeypatch.setattr(toolbox.lake, "generated_at", toolbox.lake.generated_at)
+    toolbox._next_check = 0
+
+    assert client.get("/api/config").json()["lake_built_at"] == "2099-01-01T00:00:00+00:00"
+    again = client.post("/api/ask", json={"preset": "signal"}).json()
+    assert (again["text"], again["cached"]) == ("New build answer.", False)
