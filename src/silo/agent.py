@@ -155,7 +155,8 @@ async def _run_tool(mcp: Client, name: str, arguments: dict[str, Any]) -> tuple[
 
     payload = _json(text)
     summary, sql = name, None
-    if isinstance(payload, dict) and "rows" in payload:
+    # Query results carry a list of rows; describe_table's "rows" is a count.
+    if isinstance(payload, dict) and isinstance(payload.get("rows"), list):
         sql = payload.get("sql")
         cut = " (truncated)" if payload.get("truncated") else ""
         summary = f"{payload.get('row_count', len(payload['rows']))} rows{cut}"

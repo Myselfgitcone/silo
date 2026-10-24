@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 
 from silo.agent import Answer, answer
-from silo.budget import Budget
+from silo.budget import Budget, BudgetExceeded
 from silo.lake import Lake
 from silo.server import build_server
 from silo.settings import Settings
@@ -90,8 +90,16 @@ async def run_cases(
     expected = {c.id: expected_values(c, toolbox.lake, settings.query_timeout_s) for c in cases}
     results = []
     for case in cases:
-        reply = await answer(case.question, build_server(toolbox), llm, settings, budget)
-        result = Result(case, reply, expected[case.id], grade(reply.text, expected[case.id], case))
+        try:
+            reply = await answer(case.question, build_server(toolbox), llm, settings, budget)
+            failures = grade(reply.text, expected[case.id], case)
+        except BudgetExceeded:
+            raise
+        except Exception as error:
+            # One broken case shouldn't hide the results of the rest.
+            reply = Answer(question=case.question, text="", model=settings.model)
+            failures = [f"error: {type(error).__name__}: {error}"]
+        result = Result(case, reply, expected[case.id], failures)
         results.append(result)
         if on_result:
             on_result(result)

@@ -66,3 +66,22 @@ def test_run_cases_grades_each_answer(toolbox, settings, tmp_path):
     results = anyio.run(run_cases, [case], toolbox, model, settings, budget)
     assert results[0].passed
     assert "1/1 passed" in summary_markdown(results)
+
+
+def test_a_crashing_case_fails_alone(toolbox, settings, tmp_path):
+    from silo.budget import Budget
+
+    settings.state_dir = str(tmp_path)
+    cases = [Case("boom", "first", mentions_any=("x",)), Case("fine", "second", mentions_any=("ok",))]
+
+    class FlakyModel(ScriptedModel):
+        async def create(self, **request):
+            if not self.requests:
+                self.requests.append(request)
+                raise RuntimeError("model fell over")
+            return await super().create(**request)
+
+    model = FlakyModel(reply(text("ok")))
+    results = anyio.run(run_cases, cases, toolbox, model, settings, Budget(tmp_path / "s.json", 1.0))
+    assert [r.passed for r in results] == [False, True]
+    assert "model fell over" in results[0].failures[0]
