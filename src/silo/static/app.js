@@ -31,7 +31,9 @@ function updateStatus(spent) {
     $("status").textContent = "The analyst is offline right now. The MCP endpoint below still works.";
     return;
   }
-  const built = config.lake_built_at ? new Date(config.lake_built_at).toLocaleDateString([], { dateStyle: "medium" }) : "unknown";
+  const built = config.lake_built_at
+    ? new Date(config.lake_built_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })
+    : "unknown";
   $("status").textContent =
     `Data rebuilt ${built}. Examples are free; your own questions share a ` +
     `${money(config.daily_budget)} daily budget (${money(spent ?? config.spent_today)} used today), ` +

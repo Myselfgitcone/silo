@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+import anyio
 from anthropic import APIError
 from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
@@ -90,10 +91,20 @@ class Web:
     async def script(self, _: Request) -> Response:
         return FileResponse(STATIC / "app.js", headers={"Cache-Control": "no-cache"})
 
+    async def _fresh(self) -> None:
+        """Pick up a newer Grainflow build (throttled to the refresh interval).
+
+        Tool calls refresh too, but a quiet page might not see one for hours,
+        and the preset cache is keyed on the build, so check before reading it.
+        """
+        await anyio.to_thread.run_sync(self.toolbox.refresh_if_due)
+
     async def health(self, _: Request) -> Response:
+        await self._fresh()
         return JSONResponse({"ok": True, "lake_built_at": self.toolbox.lake.generated_at})
 
     async def config(self, _: Request) -> Response:
+        await self._fresh()
         return JSONResponse(
             {
                 "presets": [{"id": key, "question": q} for key, q in PRESETS.items()],
@@ -139,6 +150,7 @@ class Web:
         return await self._run(question, cached=False)
 
     async def _preset(self, key: str) -> Response:
+        await self._fresh()
         built = self.toolbox.lake.generated_at
         async with self.preset_locks[key]:
             hit = self.cache.get(key)
