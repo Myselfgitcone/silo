@@ -109,6 +109,19 @@ class Toolbox:
         sql = compile_metric(found, group_by, filters, start, end, grain, order, limit)
         return {"metric": found.describe(), **self.run_query(sql)}
 
+    def coverage(self) -> dict[str, str | None]:
+        """The latest price day and USDA report week in the current build."""
+        found: dict[str, str | None] = {"prices_through": None, "usda_week_ending": None}
+        for key, table, column in (
+            ("prices_through", "fct_price_daily", "trade_date"),
+            ("usda_week_ending", "fct_crop_condition_weekly", "week_ending"),
+        ):
+            if table in self.lake.tables:
+                found[key] = self.lake.execute(
+                    f'select max("{column}") from "{table}"', self.settings.query_timeout_s
+                ).rows[0][0]
+        return found
+
     def data_freshness(self) -> dict[str, Any]:
         """When each table's data ends, and what the contracts rejected lately."""
         latest = {}

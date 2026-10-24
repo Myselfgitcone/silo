@@ -114,6 +114,7 @@ class Web:
                 "daily_budget": self.settings.daily_budget_usd,
                 "asks_per_hour": self.settings.asks_per_hour,
                 "lake_built_at": self.toolbox.lake.generated_at,
+                **self.toolbox.coverage(),
                 "grainflow_url": self.settings.grainflow_url,
                 "portfolio_url": self.settings.portfolio_url or None,
                 "source_url": "https://github.com/Myselfgitcone/silo",
