@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     # localhost only; set it to the public hostname when deployed.
     allowed_hosts: str = ""
 
+    # The agent. The key is read from ANTHROPIC_API_KEY by the SDK, never here.
+    model: str = "claude-haiku-5-5"
+    max_steps: int = 8
+    max_output_tokens: int = 1024
+    # Hard stop on spend per UTC day, across every question.
+    daily_budget_usd: float = 0.50
+    # USD per million tokens for `model` (prompts up to 100K tokens).
+    price_input: float = 0.10
+    price_cache_write: float = 0.125
+    price_cache_read: float = 0.01
+    price_output: float = 0.50
+    # Spend ledger and answer traces live here.
+    state_dir: str = ".silo"
+
 
 @lru_cache
 def get_settings() -> Settings:

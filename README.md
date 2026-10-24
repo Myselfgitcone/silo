@@ -50,6 +50,33 @@ documentation an analyst would, with no second copy to drift.
 **No database to run.** The lake is a few MB of Parquet. Silo downloads it, loads
 it into memory and checks for a newer build every 15 minutes.
 
+## The analyst
+
+`silo ask` is an agent built as an ordinary MCP client of the server above. It
+lists the server's tools, gives them to the model (Haiku, the cheapest tier),
+runs what the model calls and feeds results back until it answers. Rejections
+go back too, so the model reads why its SQL was refused and fixes it.
+
+```bash
+uv run silo ask "Which corn belt states lost the most good/excellent rating since July?" --trace
+```
+
+Each answer prints the SQL behind it and its cost. Cost control is built in:
+
+- **Daily budget.** A ledger in `.silo/spend.json` stops all model calls once
+  `SILO_DAILY_BUDGET_USD` (default $0.50) is spent for the UTC day.
+- **Step cap.** At most `SILO_MAX_STEPS` tool calls per question.
+- **Prompt caching.** The system prompt and tool list are the same on every
+  call and are marked cacheable.
+- **Small results.** Rows are capped server-side and oversized results are cut
+  before they reach the prompt.
+
+Every answer is appended to `.silo/traces.jsonl`: question, each tool call with
+its arguments, latency and outcome, the SQL, tokens and cost. That file is
+what the eval suite and the admin view will read.
+
+Tests drive the loop with a scripted model, so CI never calls a paid API.
+
 ## Run it
 
 ```bash
@@ -87,6 +114,6 @@ metric compiling and running, and the tools end to end over an in-process MCP cl
 ## Roadmap
 
 - [x] Lake export in Grainflow, metrics layer, SQL guard, MCP server
-- [ ] Agent loop with a per-day cost budget and tracing
+- [x] Agent loop with a per-day cost budget and tracing
 - [ ] Eval suite in CI: questions with known answers, fail the PR if accuracy drops
 - [ ] Chat UI on Vercel, server on Railway
