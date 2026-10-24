@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Spend ledger and answer traces live here.
     state_dir: str = ".silo"
 
+    # The public page. Free-text questions per visitor per hour; presets are
+    # cached per lake build and don't count.
+    asks_per_hour: int = 6
+    max_concurrent_asks: int = 3
+    grainflow_url: str = "https://grainflow-mauve.vercel.app"
+    portfolio_url: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

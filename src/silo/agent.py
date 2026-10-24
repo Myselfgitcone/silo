@@ -151,7 +151,9 @@ async def _run_tool(mcp: Client, name: str, arguments: dict[str, Any]) -> tuple[
     text = "".join(getattr(c, "text", "") for c in result.content)
 
     if result.is_error:
-        return Step(name, arguments, ok=False, ms=ms, summary=text), text, True
+        # The SDK prefixes "Error executing tool <name>: "; keep only our reason.
+        reason = text.removeprefix(f"Error executing tool {name}: ")
+        return Step(name, arguments, ok=False, ms=ms, summary=reason), text, True
 
     payload = _json(text)
     summary, sql = name, None
