@@ -35,6 +35,17 @@ def _fail(message: str) -> None:
     raise typer.Exit(1)
 
 
+def _check_writable(folder: Path) -> None:
+    """The budget can't be enforced without its ledger, so refuse to start without it."""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        probe = folder / ".write-test"
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as error:
+        _fail(f"Can't write the state folder {folder.resolve()} ({error.strerror}). Set SILO_STATE_DIR.")
+
+
 def _show(result: dict[str, Any], as_json: bool) -> None:
     if as_json:
         typer.echo(json.dumps(result, indent=2, default=str))
@@ -79,6 +90,7 @@ def serve(
     for name in ("httpx", "httpx2"):
         logging.getLogger(name).setLevel(logging.WARNING)
     settings = get_settings()
+    _check_writable(Path(settings.state_dir))
     budget = Budget(Path(settings.state_dir) / "spend.json", settings.daily_budget_usd)
     llm = AsyncAnthropic() if os.environ.get("ANTHROPIC_API_KEY") else None
     if llm is None:

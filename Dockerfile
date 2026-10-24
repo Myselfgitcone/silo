@@ -8,7 +8,11 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home silo
+# The app runs unprivileged; it only writes its spend ledger and traces, so
+# that one folder is the only thing it owns. Mount a volume here to keep them.
+RUN useradd --create-home silo && mkdir -p /app/.silo && chown silo:silo /app/.silo
+ENV SILO_STATE_DIR=/app/.silo
 USER silo
-EXPOSE 8000
+# Railway passes PORT (usually 8080); point the public domain at that port.
+EXPOSE 8080
 CMD ["uv", "run", "--no-sync", "silo", "serve", "--http", "--host", "0.0.0.0"]
