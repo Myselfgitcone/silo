@@ -8,6 +8,7 @@ on every new build is simpler than anything incremental.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import tempfile
@@ -27,6 +28,10 @@ log = logging.getLogger(__name__)
 
 class QueryTimeout(RuntimeError):
     pass
+
+
+class LakeUnavailable(RuntimeError):
+    """The lake couldn't be fetched. The message says where Silo looked."""
 
 
 @dataclass(frozen=True)
@@ -118,13 +123,19 @@ class Lake:
         return Result(columns, rows, round((time.perf_counter() - started) * 1000))
 
     def _fetch_json(self, name: str) -> dict[str, Any]:
-        if self.is_remote:
-            response = httpx.get(f"{self.source}/{name}", timeout=30, follow_redirects=True)
-            response.raise_for_status()
-            return response.json()
-        import json
-
-        return json.loads((Path(self.source) / name).read_text())
+        location = f"{self.source}/{name}"
+        try:
+            if self.is_remote:
+                response = httpx.get(location, timeout=30, follow_redirects=True)
+                response.raise_for_status()
+                return response.json()
+            return json.loads((Path(self.source) / name).read_text())
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            raise LakeUnavailable(
+                f"Couldn't read the lake manifest at {location} ({_reason(error)}). "
+                "Check that Grainflow's latest build published it, or point SILO_LAKE_URL "
+                "at another lake."
+            ) from error
 
     def _local_copy(self, name: str, tmp: Path) -> Path:
         if not self.is_remote:
@@ -136,6 +147,14 @@ class Lake:
                 for chunk in response.iter_bytes():
                     file.write(chunk)
         return target
+
+
+def _reason(error: Exception) -> str:
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, FileNotFoundError):
+        return "no such file"
+    return type(error).__name__
 
 
 def _plain(value: Any) -> Any:

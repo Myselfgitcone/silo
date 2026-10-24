@@ -2,6 +2,12 @@
 # one lake table, with the time column and the dimensions it can be cut by.
 # Pointing the agent here first keeps it from inventing joins or averaging the
 # wrong thing; anything else still goes through run_query and the SQL guard.
+#
+#   required: dimensions the caller must filter or group by. Averaging corn
+#             and soybeans together, or three futures contracts, is never what
+#             anyone means, so the metric refuses instead of guessing.
+#   where:    a fixed condition always applied, e.g. limiting crop ratings to
+#             the states USDA uses for its national number.
 
 metrics:
   corn_close:
@@ -36,6 +42,7 @@ metrics:
     time: trade_date
     expression: avg(close_price)
     dimensions: [symbol, commodity]
+    required: [symbol]
 
   realized_volatility:
     description: Annualised 20-day realized volatility of daily returns.
@@ -44,16 +51,22 @@ metrics:
     time: trade_date
     expression: avg(realized_vol_20d)
     dimensions: [symbol, commodity]
+    required: [symbol]
 
   pct_good_excellent:
     description: >
-      Share of the crop rated good or excellent per state. Without a state_alpha
-      grouping this is a simple average across reporting states, not acre-weighted.
+      Share of the crop rated good or excellent, in the 18 states USDA uses for
+      its national Crop Progress number. Without a state_alpha grouping this is
+      a simple average across those states, not acre-weighted.
     unit: percent
     table: fct_crop_condition_weekly
     time: week_ending
     expression: avg(pct_good_excellent)
     dimensions: [commodity, state_alpha]
+    required: [commodity]
+    where: >
+      state_alpha in (select r.state_alpha from ref_crop_progress_states as r
+                      where r.commodity = fct_crop_condition_weekly.commodity)
 
   good_excellent_change:
     description: Points of good/excellent gained or lost since the previous weekly report.
@@ -62,6 +75,10 @@ metrics:
     time: week_ending
     expression: avg(good_excellent_change)
     dimensions: [commodity, state_alpha]
+    required: [commodity]
+    where: >
+      state_alpha in (select r.state_alpha from ref_crop_progress_states as r
+                      where r.commodity = fct_crop_condition_weekly.commodity)
 
   condition_index:
     description: Rating from 1 (very poor) to 5 (excellent), weighted by the share in each class.
@@ -70,6 +87,10 @@ metrics:
     time: week_ending
     expression: avg(condition_index)
     dimensions: [commodity, state_alpha]
+    required: [commodity]
+    where: >
+      state_alpha in (select r.state_alpha from ref_crop_progress_states as r
+                      where r.commodity = fct_crop_condition_weekly.commodity)
 
   growing_degree_days:
     description: Average daily corn growing degree days (86/50 method).

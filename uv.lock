@@ -892,6 +892,7 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "sqlglot" },
     { name = "typer" },
 ]
@@ -909,6 +910,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rich", specifier = ">=13" },
     { name = "sqlglot", specifier = ">=26" },
     { name = "typer", specifier = ">=0.12" },
 ]

@@ -25,7 +25,10 @@ Grainflow daily build ──► gold tables as Parquet + manifest.json (served b
 **Metrics before SQL.** `src/silo/metrics.yml` defines what can be asked by name:
 the table, the aggregate, the time column and the dimensions it can be cut by.
 The agent is told to try `query_metric` first, so it can't average the wrong
-column or invent a join. Identifiers come from the YAML and values are quoted by
+column or invent a join. Metrics also carry the rules an analyst would apply:
+crop ratings must name a commodity (corn and soybeans never get averaged
+together) and stay inside the 18 states USDA uses for its national number, and
+price metrics must name a contract. Identifiers come from the YAML and values are quoted by
 sqlglot, so the only free text that reaches SQL is a literal.
 
 **Two locks on free-form SQL.** `run_query` exists for questions a metric can't express.
@@ -52,13 +55,13 @@ it into memory and checks for a newer build every 15 minutes.
 ```bash
 uv sync
 uv run silo sql "select symbol, max(trade_date) from fct_price_daily group by 1"
-uv run silo metric pct_good_excellent --by state_alpha --grain month --start 2026-05-01
+uv run silo metric pct_good_excellent --where commodity=CORN --by state_alpha --grain month
 uv run silo serve                    # stdio, for desktop MCP clients
 uv run silo serve --http --port 8000 # Streamable HTTP at /mcp
 ```
 
 Point `SILO_LAKE_URL` at a local folder (for example `tests/fixtures/lake`) to
-work offline. Settings are in `.env.example`.
+work offline. Settings are in `.env.example`. Add `--json` for raw output.
 
 To use it from an MCP client such as Cursor or VS Code:
 

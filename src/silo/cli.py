@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 import typer
+from rich.console import Console
+from rich.table import Table
 
-from silo.lake import Lake
+from silo.guard import QueryRejected
+from silo.lake import Lake, LakeUnavailable, QueryTimeout
 from silo.settings import get_settings
 from silo.tools import Toolbox
+
+console = Console()
+err = Console(stderr=True)
 
 app = typer.Typer(no_args_is_help=True, help="Silo: an MCP server over the Grainflow lake.")
 
@@ -15,8 +22,29 @@ app = typer.Typer(no_args_is_help=True, help="Silo: an MCP server over the Grain
 def _toolbox() -> Toolbox:
     settings = get_settings()
     lake = Lake(settings.lake_url)
-    lake.load()
+    try:
+        lake.load()
+    except LakeUnavailable as error:
+        _fail(str(error))
     return Toolbox(lake, settings)
+
+
+def _fail(message: str) -> None:
+    err.print(f"[bold red]Error:[/] {message}")
+    raise typer.Exit(1)
+
+
+def _show(result: dict[str, Any], as_json: bool) -> None:
+    if as_json:
+        typer.echo(json.dumps(result, indent=2, default=str))
+        return
+    table = Table(*result["columns"], header_style="bold", box=None, pad_edge=False)
+    for row in result["rows"]:
+        table.add_row(*(f"{v:,.4g}" if isinstance(v, float) else str(v) for v in row))
+    console.print(f"[dim]{result['sql']}[/]\n")
+    console.print(table)
+    more = " (truncated; narrow the query)" if result["truncated"] else ""
+    console.print(f"\n[dim]{result['row_count']} rows in {result['elapsed_ms']} ms{more}[/]")
 
 
 @app.command()
@@ -54,9 +82,16 @@ def serve(
 
 
 @app.command()
-def sql(query: str) -> None:
+def sql(
+    query: str,
+    as_json: bool = typer.Option(False, "--json", help="Print raw JSON instead of a table."),
+) -> None:
     """Run one query through the same guard the agent uses."""
-    typer.echo(json.dumps(_toolbox().run_query(query), indent=2, default=str))
+    toolbox = _toolbox()
+    try:
+        _show(toolbox.run_query(query), as_json)
+    except (QueryRejected, QueryTimeout) as error:
+        _fail(str(error))
 
 
 @app.command()
@@ -64,12 +99,24 @@ def metric(
     name: str,
     by: list[str] = typer.Option([], "--by", help="Dimension to group by; repeatable."),
     grain: str | None = typer.Option(None),
+    where: list[str] = typer.Option([], "--where", help="Filter as dimension=value; repeatable."),
     start: str | None = typer.Option(None),
     end: str | None = typer.Option(None),
+    as_json: bool = typer.Option(False, "--json", help="Print raw JSON instead of a table."),
 ) -> None:
     """Compute a named metric from the command line."""
-    result = _toolbox().query_metric(name, group_by=by, start=start, end=end, grain=grain)
-    typer.echo(json.dumps(result, indent=2, default=str))
+    filters: dict[str, list[str]] = {}
+    for item in where:
+        key, _, value = item.partition("=")
+        if not value:
+            _fail(f"--where takes dimension=value, got {item!r}.")
+        filters.setdefault(key, []).append(value)
+    toolbox = _toolbox()
+    try:
+        result = toolbox.query_metric(name, by, filters, start, end, grain)
+    except (QueryRejected, QueryTimeout) as error:
+        _fail(str(error))
+    _show(result, as_json)
 
 
 if __name__ == "__main__":
