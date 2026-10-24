@@ -23,3 +23,11 @@ def test_data_freshness(toolbox):
     freshness = toolbox.data_freshness()
     assert freshness["latest_data"]["fct_price_daily"] == "2026-09-11"
     assert freshness["quarantined_last_30_days"]
+
+
+def test_a_failed_refresh_keeps_serving_the_last_build(toolbox, tmp_path, monkeypatch):
+    built = toolbox.lake.generated_at
+    monkeypatch.setattr(toolbox.lake, "source", str(tmp_path))  # nothing published here
+    toolbox.refresh_if_due()
+    assert toolbox.lake.generated_at == built
+    assert toolbox.run_query("select count(*) from ref_symbols")["rows"] == [[4]]

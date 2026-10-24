@@ -31,6 +31,8 @@ class Metric:
     time: str
     expression: str
     dimensions: tuple[str, ...] = field(default_factory=tuple)
+    required: tuple[str, ...] = field(default_factory=tuple)
+    where: str | None = None
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -40,6 +42,7 @@ class Metric:
             "table": self.table,
             "time_column": self.time,
             "dimensions": list(self.dimensions),
+            "must_filter_or_group_by": list(self.required),
         }
 
 
@@ -54,6 +57,8 @@ def load_metrics(path: Path = METRICS_FILE) -> dict[str, Metric]:
             time=spec["time"],
             expression=spec["expression"],
             dimensions=tuple(spec.get("dimensions", [])),
+            required=tuple(spec.get("required", [])),
+            where=" ".join(spec["where"].split()) if spec.get("where") else None,
         )
         for name, spec in raw.items()
     }
@@ -75,6 +80,12 @@ def compile_metric(
         if name not in metric.dimensions:
             allowed = ", ".join(metric.dimensions) or "none"
             raise QueryRejected(f"{metric.name} can't be cut by {name}. Dimensions: {allowed}.")
+    for name in metric.required:
+        if name not in group_by and name not in filters:
+            raise QueryRejected(
+                f"{metric.name} mixes different {name} values unless you pick one. "
+                f'Filter it (filters={{"{name}": ...}}) or add it to group_by.'
+            )
     if grain is not None and grain not in GRAINS:
         raise QueryRejected(f"Unknown grain {grain}. Use one of: {', '.join(GRAINS)}.")
 
@@ -90,6 +101,8 @@ def compile_metric(
     selects.append(value.as_(metric.name))
 
     query = exp.select(*selects).from_(metric.table)
+    if metric.where:
+        query = query.where(exp.maybe_parse(metric.where, dialect="duckdb"))
     for name, wanted in filters.items():
         values = wanted if isinstance(wanted, list) else [wanted]
         query = query.where(exp.column(name).isin(*[_literal(v) for v in values]))

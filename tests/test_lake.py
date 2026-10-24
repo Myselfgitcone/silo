@@ -1,7 +1,7 @@
 import duckdb
 import pytest
 
-from silo.lake import Lake, QueryTimeout
+from silo.lake import Lake, LakeUnavailable, QueryTimeout
 
 
 def test_tables_and_dbt_docs_load(lake):
@@ -27,6 +27,6 @@ def test_long_queries_are_stopped(lake):
         lake.execute("select count(*) from range(10000000000) a, range(1000) b", timeout_s=0.2)
 
 
-def test_a_missing_lake_fails_loudly(tmp_path):
-    with pytest.raises(FileNotFoundError):
+def test_a_missing_lake_says_where_it_looked(tmp_path):
+    with pytest.raises(LakeUnavailable, match=f"{tmp_path}/manifest.json .no such file"):
         Lake(str(tmp_path)).load()

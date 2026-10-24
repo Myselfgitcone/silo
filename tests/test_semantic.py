@@ -9,7 +9,7 @@ METRICS = load_metrics()
 def test_every_metric_compiles_and_runs(lake):
     for metric in METRICS.values():
         assert metric.table in lake.tables, metric.name
-        lake.execute(compile_metric(metric, grain="month"), timeout_s=5)
+        lake.execute(compile_metric(metric, group_by=list(metric.required), grain="month"), timeout_s=5)
 
 
 def test_grain_group_and_filters():
@@ -24,6 +24,25 @@ def test_grain_group_and_filters():
     assert "state_alpha IN ('IA', 'IL')" in sql
     assert "commodity IN ('CORN')" in sql
     assert sql.endswith("GROUP BY 1, 2 ORDER BY 1, 2")
+
+
+def test_metrics_that_would_mix_things_refuse_to_guess():
+    with pytest.raises(QueryRejected, match="mixes different symbol values"):
+        compile_metric(METRICS["futures_close"])
+    compile_metric(METRICS["futures_close"], filters={"symbol": "ZC=F"})
+    compile_metric(METRICS["futures_close"], group_by=["symbol"])
+
+
+def test_crop_ratings_stay_inside_the_crop_progress_states(lake):
+    sql = compile_metric(
+        METRICS["pct_good_excellent"], group_by=["state_alpha"], filters={"commodity": "CORN"}
+    )
+    assert "ref_crop_progress_states" in sql
+    states = {row[0] for row in lake.execute(sql, timeout_s=5).rows}
+    allowed = lake.execute(
+        "select state_alpha from ref_crop_progress_states where commodity = 'CORN'", timeout_s=5
+    ).rows
+    assert states <= {row[0] for row in allowed}
 
 
 def test_filter_values_are_quoted_not_injected():
@@ -42,4 +61,4 @@ def test_filter_values_are_quoted_not_injected():
 )
 def test_bad_requests_explain_themselves(kwargs, reason):
     with pytest.raises(QueryRejected, match=reason):
-        compile_metric(METRICS["pct_good_excellent"], **kwargs)
+        compile_metric(METRICS["pct_good_excellent"], **{"filters": {"commodity": "CORN"}, **kwargs})

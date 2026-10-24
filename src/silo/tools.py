@@ -6,16 +6,19 @@ testable without a protocol in the way.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any
 
 from silo.guard import QueryRejected, check
-from silo.lake import Lake
+from silo.lake import Lake, LakeUnavailable
 from silo.semantic import Metric, compile_metric, load_metrics
 from silo.settings import Settings
 
 SAMPLE_ROWS = 5
+
+log = logging.getLogger(__name__)
 
 
 class Toolbox:
@@ -32,6 +35,9 @@ class Toolbox:
             return
         try:
             self.lake.load()
+        except LakeUnavailable as error:
+            # Keep answering from the last good build rather than going dark.
+            log.warning("lake refresh failed, serving the build from %s: %s", self.lake.generated_at, error)
         finally:
             self._next_check = time.monotonic() + self.settings.refresh_s
             self._refresh_lock.release()
