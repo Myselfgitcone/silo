@@ -1,0 +1,96 @@
+# The metrics an agent can ask for by name. Each one is a single aggregate over
+# one lake table, with the time column and the dimensions it can be cut by.
+# Pointing the agent here first keeps it from inventing joins or averaging the
+# wrong thing; anything else still goes through run_query and the SQL guard.
+
+metrics:
+  corn_close:
+    description: CBOT corn front-month close at the end of each week.
+    unit: cents per bushel
+    table: mart_corn_belt_weekly
+    time: week_start
+    expression: avg(corn_close)
+
+  next_week_corn_return:
+    description: >
+      Corn's return over the following week. Pair it with good_excellent_change
+      to ask whether a ratings move came before a price move.
+    unit: ratio (0.01 = 1%)
+    table: mart_corn_belt_weekly
+    time: week_start
+    expression: avg(next_week_corn_return)
+
+  corn_belt_good_excellent:
+    description: >
+      Share of corn rated good or excellent, averaged over the 18 USDA Crop
+      Progress states. Only reported during the growing season.
+    unit: percent
+    table: mart_corn_belt_weekly
+    time: week_start
+    expression: avg(pct_good_excellent)
+
+  futures_close:
+    description: Daily settle price per futures contract.
+    unit: cents per bushel
+    table: fct_price_daily
+    time: trade_date
+    expression: avg(close_price)
+    dimensions: [symbol, commodity]
+
+  realized_volatility:
+    description: Annualised 20-day realized volatility of daily returns.
+    unit: ratio (0.25 = 25%)
+    table: fct_price_daily
+    time: trade_date
+    expression: avg(realized_vol_20d)
+    dimensions: [symbol, commodity]
+
+  pct_good_excellent:
+    description: >
+      Share of the crop rated good or excellent per state. Without a state_alpha
+      grouping this is a simple average across reporting states, not acre-weighted.
+    unit: percent
+    table: fct_crop_condition_weekly
+    time: week_ending
+    expression: avg(pct_good_excellent)
+    dimensions: [commodity, state_alpha]
+
+  good_excellent_change:
+    description: Points of good/excellent gained or lost since the previous weekly report.
+    unit: percentage points
+    table: fct_crop_condition_weekly
+    time: week_ending
+    expression: avg(good_excellent_change)
+    dimensions: [commodity, state_alpha]
+
+  condition_index:
+    description: Rating from 1 (very poor) to 5 (excellent), weighted by the share in each class.
+    unit: index 1-5
+    table: fct_crop_condition_weekly
+    time: week_ending
+    expression: avg(condition_index)
+    dimensions: [commodity, state_alpha]
+
+  growing_degree_days:
+    description: Average daily corn growing degree days (86/50 method).
+    unit: degree days per day
+    table: fct_weather_state_daily
+    time: obs_date
+    expression: avg(gdd_f)
+    dimensions: [state_alpha]
+
+  precipitation:
+    description: Average daily precipitation.
+    unit: millimetres per day
+    table: fct_weather_state_daily
+    time: obs_date
+    expression: avg(precip_mm)
+    dimensions: [state_alpha]
+
+  quarantined_records:
+    description: Records rejected by Grainflow's data contracts instead of being loaded.
+    unit: records
+    table: rpt_quarantine_daily
+    time: ingested_date
+    expression: sum(rejected_records)
+    dimensions: [contract, reason]
