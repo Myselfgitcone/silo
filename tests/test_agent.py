@@ -90,6 +90,33 @@ def test_tool_call_then_answer(run, settings):
     assert traced["sql"] == answer.sql
 
 
+def test_thinking_blocks_go_back_unchanged(run):
+    thinking = {"type": "thinking", "thinking": "Check the metric list first.", "signature": "sig-123"}
+    model = ScriptedModel(
+        reply(thinking, tool("list_metrics"), stop="tool_use"),
+        reply(thinking, text("There are 11 metrics.")),
+    )
+    answer = run("What can you measure?", model)
+
+    echoed = model.requests[1]["messages"][1]["content"]
+    assert echoed[0] == thinking
+    assert echoed[1]["type"] == "tool_use"
+    assert answer.text == "There are 11 metrics."
+
+
+def test_unexpected_errors_are_not_buried_in_exception_groups(run):
+    class Broken:
+        messages = None
+
+        @staticmethod
+        async def create(**_):
+            raise ConnectionError("network down")
+
+    Broken.messages = Broken
+    with pytest.raises(ConnectionError, match="network down"):
+        run("Anything", Broken)
+
+
 def test_a_rejected_query_goes_back_to_the_model_to_fix(run):
     model = ScriptedModel(
         reply(tool("run_query", sql="delete from fct_price_daily"), stop="tool_use"),
