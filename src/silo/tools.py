@@ -92,11 +92,13 @@ class Toolbox:
         start: str | None = None,
         end: str | None = None,
         grain: str | None = None,
+        order: str | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         found = self.metrics.get(metric)
         if found is None:
             raise QueryRejected(f"There's no metric named {metric}. Metrics: {', '.join(self.metrics)}.")
-        sql = compile_metric(found, group_by, filters, start, end, grain)
+        sql = compile_metric(found, group_by, filters, start, end, grain, order, limit)
         return {"metric": found.describe(), **self.run_query(sql)}
 
     def data_freshness(self) -> dict[str, Any]:

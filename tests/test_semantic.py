@@ -62,3 +62,25 @@ def test_filter_values_are_quoted_not_injected():
 def test_bad_requests_explain_themselves(kwargs, reason):
     with pytest.raises(QueryRejected, match=reason):
         compile_metric(METRICS["pct_good_excellent"], **{"filters": {"commodity": "CORN"}, **kwargs})
+
+
+def test_rankings_are_sorted_by_the_database(lake):
+    sql = compile_metric(
+        METRICS["pct_good_excellent"],
+        group_by=["state_alpha"],
+        filters={"commodity": "CORN"},
+        order="asc",
+        limit=1,
+    )
+    assert sql.endswith("GROUP BY 1 ORDER BY pct_good_excellent ASC LIMIT 1")
+    worst = lake.execute(sql, timeout_s=5).rows
+    every = lake.execute(sql.replace(" LIMIT 1", ""), timeout_s=5).rows
+    assert worst == every[:1]
+    assert worst[0][1] == min(row[1] for row in every)
+
+
+def test_bad_order_and_limit_are_rejected():
+    with pytest.raises(QueryRejected, match="asc or desc"):
+        compile_metric(METRICS["corn_close"], order="up")
+    with pytest.raises(QueryRejected, match="at least 1"):
+        compile_metric(METRICS["corn_close"], limit=0)

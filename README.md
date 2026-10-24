@@ -77,6 +77,30 @@ what the eval suite and the admin view will read.
 
 Tests drive the loop with a scripted model, so CI never calls a paid API.
 
+## Evals
+
+`evals/cases.yml` holds questions with known answers: the worst and best corn
+states this week, the latest corn settle, 2022's high, wheat volatility, the
+signal Grainflow measures, plus a request to delete data and a question the
+lake can't answer. Each case carries the SQL that computes the right answer,
+run against the lake at eval time, so expectations follow the data as it
+refreshes.
+
+Grading needs no second model: an answer passes when it mentions every
+expected value. Numbers match within the rounding the answer uses, state codes
+match their names, dates match ISO or "October 18" form.
+
+```bash
+uv run silo eval                     # all cases, exits 1 below 85%
+uv run silo eval --only worst_corn_state_latest_week
+```
+
+The `evals` workflow runs them on any PR that touches the prompt, tools or
+metrics, weekly, and on demand, with the pass table in the job summary. The
+first real run caught the agent calling Iowa the top corn state when four
+states were higher; the fix was to let the database rank (`order` and `limit`
+on `query_metric`) instead of the model reading rows by eye.
+
 ## Run it
 
 ```bash
@@ -115,5 +139,5 @@ metric compiling and running, and the tools end to end over an in-process MCP cl
 
 - [x] Lake export in Grainflow, metrics layer, SQL guard, MCP server
 - [x] Agent loop with a per-day cost budget and tracing
-- [ ] Eval suite in CI: questions with known answers, fail the PR if accuracy drops
+- [x] Eval suite in CI: questions with known answers, fail the PR if accuracy drops
 - [ ] Chat UI on Vercel, server on Railway

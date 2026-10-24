@@ -71,6 +71,8 @@ def compile_metric(
     start: str | None = None,
     end: str | None = None,
     grain: str | None = None,
+    order: str | None = None,
+    limit: int | None = None,
 ) -> str:
     """Build the SQL for one metric. Raises QueryRejected on a bad request."""
     group_by = group_by or []
@@ -88,6 +90,10 @@ def compile_metric(
             )
     if grain is not None and grain not in GRAINS:
         raise QueryRejected(f"Unknown grain {grain}. Use one of: {', '.join(GRAINS)}.")
+    if order is not None and order not in ("asc", "desc"):
+        raise QueryRejected("order must be asc or desc.")
+    if limit is not None and limit < 1:
+        raise QueryRejected("limit must be at least 1.")
 
     time = exp.column(metric.time)
     selects: list[exp.Expression] = []
@@ -110,8 +116,15 @@ def compile_metric(
         query = query.where(time >= exp.cast(exp.Literal.string(_iso(start)), "date"))
     if end:
         query = query.where(time <= exp.cast(exp.Literal.string(_iso(end)), "date"))
+    if order:
+        # Rank by the metric itself, so "worst" and "top 3" come from the database.
+        query = query.order_by(exp.Ordered(this=exp.column(metric.name), desc=order == "desc"))
     if groups:
-        query = query.group_by(*groups).order_by(*groups)
+        query = query.group_by(*groups)
+        if not order:
+            query = query.order_by(*groups)
+    if limit:
+        query = query.limit(limit)
     return query.sql(dialect="duckdb")
 
 

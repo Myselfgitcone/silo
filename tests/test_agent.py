@@ -146,3 +146,9 @@ def test_no_model_call_once_the_daily_budget_is_spent(run, settings):
     with pytest.raises(BudgetExceeded, match=r"budget of \$0\.50 is used up"):
         run("Anything", model)
     assert model.requests == []
+
+
+def test_an_answer_cut_off_at_the_output_limit_says_so(run):
+    answer = run("Explain everything", ScriptedModel(reply(text("Corn rose because"), stop="max_tokens")))
+    assert answer.cut_off
+    assert answer.text.endswith("*(Answer cut off at the output limit.)*")

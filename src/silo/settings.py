@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     # The agent. The key is read from ANTHROPIC_API_KEY by the SDK, never here.
     model: str = "claude-haiku-5-5"
     max_steps: int = 8
-    max_output_tokens: int = 1024
+    # Thinking and the answer share this, so leave room for both.
+    max_output_tokens: int = 4096
     # Hard stop on spend per UTC day, across every question.
     daily_budget_usd: float = 0.50
     # USD per million tokens for `model` (prompts up to 100K tokens).

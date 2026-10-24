@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -126,7 +127,6 @@ def ask(
 ) -> None:
     """Ask the analyst a question in plain English. Needs ANTHROPIC_API_KEY."""
     import os
-    from pathlib import Path
 
     import anyio
     from anthropic import APIError, AsyncAnthropic
@@ -139,7 +139,9 @@ def ask(
 
     load_dotenv()
     # One log line per API call drowns the answer; errors still surface.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # The Anthropic SDK logs through httpx2, the lake download through httpx.
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     if not os.environ.get("ANTHROPIC_API_KEY"):
         _fail("Set ANTHROPIC_API_KEY in your shell or .env first.")
     settings = get_settings()
@@ -167,6 +169,61 @@ def ask(
         f"{u.output_tokens:,} out tokens · ${answer.cost_usd:.4f} · {answer.latency_ms / 1000:.1f}s · "
         f"${budget.spent_today():.4f} of ${settings.daily_budget_usd:.2f} used today[/]"
     )
+
+
+@app.command(name="eval")
+def run_evals(
+    cases_file: Path = typer.Option(Path("evals/cases.yml"), "--cases"),
+    only: list[str] = typer.Option([], "--only", help="Run just these case ids; repeatable."),
+    min_pass: float = typer.Option(0.85, help="Exit 1 if the pass rate is below this."),
+) -> None:
+    """Ask the eval questions, grade the answers against the lake, write a report."""
+    import os
+    from datetime import UTC, datetime
+
+    import anyio
+    from anthropic import AsyncAnthropic
+    from dotenv import load_dotenv
+
+    from silo.budget import Budget, BudgetExceeded
+    from silo.evals import load_cases, report_json, run_cases, summary_markdown
+
+    load_dotenv()
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        _fail("Set ANTHROPIC_API_KEY in your shell or .env first.")
+    cases = [c for c in load_cases(cases_file) if not only or c.id in only]
+    if not cases:
+        _fail("No cases matched.")
+    settings = get_settings()
+    toolbox = _toolbox()
+    budget = Budget(Path(settings.state_dir) / "spend.json", settings.daily_budget_usd)
+
+    def show(result) -> None:
+        mark = "[green]pass[/]" if result.passed else "[red]FAIL[/]"
+        notes = f" [dim]{'; '.join(result.failures)}[/]" if result.failures else ""
+        console.print(f"{mark} {result.case.id}{notes}")
+
+    try:
+        results = anyio.run(run_cases, cases, toolbox, AsyncAnthropic(), settings, budget, show)
+    except BudgetExceeded as error:
+        _fail(str(error))
+
+    report_dir = Path(settings.state_dir) / "evals"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    (report_dir / f"{stamp}.json").write_text(json.dumps(report_json(results), indent=2, default=str))
+    summary = summary_markdown(results)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as file:
+            file.write(summary)
+
+    passed = sum(r.passed for r in results)
+    cost = sum(r.answer.cost_usd for r in results)
+    console.print(f"\n{passed}/{len(results)} passed · ${cost:.4f} · report in {report_dir}/{stamp}.json")
+    if passed / len(results) < min_pass:
+        _fail(f"Pass rate {passed / len(results):.0%} is below {min_pass:.0%}.")
 
 
 if __name__ == "__main__":
