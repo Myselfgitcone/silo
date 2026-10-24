@@ -119,5 +119,51 @@ def metric(
     _show(result, as_json)
 
 
+@app.command()
+def ask(
+    question: str,
+    show_trace: bool = typer.Option(False, "--trace", help="Show each tool call."),
+) -> None:
+    """Ask the analyst a question in plain English. Needs ANTHROPIC_API_KEY."""
+    import os
+    from pathlib import Path
+
+    import anyio
+    from anthropic import AsyncAnthropic
+    from dotenv import load_dotenv
+    from rich.markdown import Markdown
+
+    from silo.agent import answer as run_agent
+    from silo.budget import Budget, BudgetExceeded
+    from silo.server import build_server
+
+    load_dotenv()
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        _fail("Set ANTHROPIC_API_KEY in your shell or .env first.")
+    settings = get_settings()
+    toolbox = _toolbox()
+    budget = Budget(Path(settings.state_dir) / "spend.json", settings.daily_budget_usd)
+
+    try:
+        answer = anyio.run(run_agent, question, build_server(toolbox), AsyncAnthropic(), settings, budget)
+    except BudgetExceeded as error:
+        _fail(str(error))
+
+    console.print(Markdown(answer.text))
+    if show_trace:
+        console.print()
+        for i, step in enumerate(answer.steps, 1):
+            mark = "[green]ok[/]" if step.ok else "[red]rejected[/]"
+            console.print(f"[dim]{i}.[/] {step.tool} {mark} [dim]{step.ms} ms · {step.summary}[/]")
+    for sql in answer.sql:
+        console.print(f"\n[dim]{sql}[/]")
+    u = answer.usage
+    console.print(
+        f"\n[dim]{len(answer.steps)} tool calls · {u.input_tokens + u.cache_read_tokens:,} in / "
+        f"{u.output_tokens:,} out tokens · ${answer.cost_usd:.4f} · {answer.latency_ms / 1000:.1f}s · "
+        f"${budget.spent_today():.4f} of ${settings.daily_budget_usd:.2f} used today[/]"
+    )
+
+
 if __name__ == "__main__":
     app()
