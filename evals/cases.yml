@@ -1,6 +1,10 @@
 # Questions with known answers. `truth` runs against the lake at eval time and
 # `mentions` are filled from its first row; alternatives are separated by |.
 # State codes also match their full names (IA or Iowa).
+#
+# "Latest week" means the latest week any of USDA's 18 states reported, the same
+# rule the pct_good_excellent metric applies. Late in the season only states
+# outside that list keep reporting, so a bare max(week_ending) finds no rows.
 
 cases:
   - id: worst_corn_state_latest_week
@@ -9,8 +13,10 @@ cases:
       select state_alpha, pct_good_excellent as pct
       from fct_crop_condition_weekly
       where commodity = 'CORN'
-        and week_ending = (select max(week_ending) from fct_crop_condition_weekly where commodity = 'CORN')
         and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN')
+        and week_ending = (select max(f.week_ending) from fct_crop_condition_weekly as f
+                           where f.commodity = 'CORN'
+                             and f.state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN'))
       order by pct_good_excellent, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
@@ -21,8 +27,10 @@ cases:
       select state_alpha, pct_good_excellent as pct
       from fct_crop_condition_weekly
       where commodity = 'CORN'
-        and week_ending = (select max(week_ending) from fct_crop_condition_weekly where commodity = 'CORN')
         and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN')
+        and week_ending = (select max(f.week_ending) from fct_crop_condition_weekly as f
+                           where f.commodity = 'CORN'
+                             and f.state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN'))
       order by pct_good_excellent desc, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
@@ -33,8 +41,10 @@ cases:
       select state_alpha, pct_good_excellent as pct
       from fct_crop_condition_weekly
       where commodity = 'SOYBEANS'
-        and week_ending = (select max(week_ending) from fct_crop_condition_weekly where commodity = 'SOYBEANS')
         and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'SOYBEANS')
+        and week_ending = (select max(f.week_ending) from fct_crop_condition_weekly as f
+                           where f.commodity = 'SOYBEANS'
+                             and f.state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'SOYBEANS'))
       order by pct_good_excellent, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
