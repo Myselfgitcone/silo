@@ -220,7 +220,7 @@ def run_evals(
     from dotenv import load_dotenv
 
     from silo.budget import Budget, BudgetExceeded
-    from silo.evals import load_cases, report_json, run_cases, summary_markdown
+    from silo.evals import graded, load_cases, report_json, run_cases, summary_markdown
 
     load_dotenv()
     for name in ("httpx", "httpx2"):
@@ -235,6 +235,9 @@ def run_evals(
     budget = Budget(Path(settings.state_dir) / "spend.json", settings.daily_budget_usd)
 
     def show(result) -> None:
+        if result.skipped:
+            console.print(f"[yellow]skip[/] {result.case.id} [dim]{result.skipped}[/]")
+            return
         mark = "[green]pass[/]" if result.passed else "[red]FAIL[/]"
         notes = f" [dim]{'; '.join(result.failures)}[/]" if result.failures else ""
         console.print(f"{mark} {result.case.id}{notes}")
@@ -253,11 +256,17 @@ def run_evals(
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as file:
             file.write(summary)
 
-    passed = sum(r.passed for r in results)
+    asked = graded(results)
+    passed = sum(r.passed for r in asked)
     cost = sum(r.answer.cost_usd for r in results)
-    console.print(f"\n{passed}/{len(results)} passed · ${cost:.4f} · report in {report_dir}/{stamp}.json")
-    if passed / len(results) < min_pass:
-        _fail(f"Pass rate {passed / len(results):.0%} is below {min_pass:.0%}.")
+    skipped = f" · {len(results) - len(asked)} skipped" if len(asked) < len(results) else ""
+    console.print(
+        f"\n{passed}/{len(asked)} passed{skipped} · ${cost:.4f} · report in {report_dir}/{stamp}.json"
+    )
+    if not asked:
+        _fail("Every case was skipped; nothing was graded.")
+    if passed / len(asked) < min_pass:
+        _fail(f"Pass rate {passed / len(asked):.0%} is below {min_pass:.0%}.")
 
 
 if __name__ == "__main__":

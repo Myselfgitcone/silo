@@ -43,6 +43,8 @@ class Case:
     truth: str | None = None
     mentions: tuple[str, ...] = ()
     mentions_any: tuple[str, ...] = ()
+    when: str | None = None  # SQL; no rows means the case is skipped this run
+    skip: str = "the data this case needs is not in the lake right now"
 
 
 @dataclass
@@ -51,10 +53,16 @@ class Result:
     answer: Answer
     expected: list[str]
     failures: list[str] = field(default_factory=list)
+    skipped: str | None = None  # why the question was not asked
 
     @property
     def passed(self) -> bool:
-        return not self.failures
+        return self.skipped is None and not self.failures
+
+
+def graded(results: list[Result]) -> list[Result]:
+    """The results that count: everything that was actually asked."""
+    return [r for r in results if r.skipped is None]
 
 
 def load_cases(path: Path) -> list[Case]:
@@ -66,9 +74,18 @@ def load_cases(path: Path) -> list[Case]:
             truth=c.get("truth"),
             mentions=tuple(c.get("mentions", [])),
             mentions_any=tuple(c.get("mentions_any", [])),
+            when=c.get("when"),
+            skip=" ".join(c.get("skip", Case.skip).split()),
         )
         for c in raw
     ]
+
+
+def applies(case: Case, lake: Lake, timeout_s: float = 10) -> bool:
+    """A case without `when` always applies; with it, only while the SQL returns a row."""
+    if not case.when:
+        return True
+    return bool(lake.execute(case.when, timeout_s).rows)
 
 
 def expected_values(case: Case, lake: Lake, timeout_s: float = 10) -> list[str]:
@@ -87,9 +104,18 @@ async def run_cases(
 ) -> list[Result]:
     """Ask every question and grade it. Expected values are computed first, so a
     broken truth query fails fast instead of after paying for answers."""
-    expected = {c.id: expected_values(c, toolbox.lake, settings.query_timeout_s) for c in cases}
+    live = {c.id: applies(c, toolbox.lake, settings.query_timeout_s) for c in cases}
+    expected = {
+        c.id: expected_values(c, toolbox.lake, settings.query_timeout_s) if live[c.id] else [] for c in cases
+    }
     results = []
     for case in cases:
+        if not live[case.id]:
+            result = Result(case, Answer(case.question, "", settings.model), [], skipped=case.skip)
+            results.append(result)
+            if on_result:
+                on_result(result)
+            continue
         try:
             reply = await answer(case.question, build_server(toolbox), llm, settings, budget)
             failures = grade(reply.text, expected[case.id], case)
@@ -147,10 +173,12 @@ def _decimals(number: str) -> int:
 
 
 def summary_markdown(results: list[Result]) -> str:
-    passed = sum(r.passed for r in results)
+    asked = graded(results)
+    passed = sum(r.passed for r in asked)
     cost = sum(r.answer.cost_usd for r in results)
+    skipped = len(results) - len(asked)
     lines = [
-        f"### Silo evals: {passed}/{len(results)} passed",
+        f"### Silo evals: {passed}/{len(asked)} passed" + (f", {skipped} skipped" if skipped else ""),
         "",
         f"Total cost ${cost:.4f}, model `{results[0].answer.model if results else '-'}`.",
         "",
@@ -158,22 +186,22 @@ def summary_markdown(results: list[Result]) -> str:
         "|---|---|---|---|---|",
     ]
     for r in results:
-        notes = "; ".join(r.failures) or ""
-        lines.append(
-            f"| {r.case.id} | {'pass' if r.passed else 'FAIL'} | {len(r.answer.steps)} "
-            f"| ${r.answer.cost_usd:.4f} | {notes} |"
-        )
+        notes = r.skipped or "; ".join(r.failures) or ""
+        mark = "skip" if r.skipped else "pass" if r.passed else "FAIL"
+        lines.append(f"| {r.case.id} | {mark} | {len(r.answer.steps)} | ${r.answer.cost_usd:.4f} | {notes} |")
     return "\n".join(lines) + "\n"
 
 
 def report_json(results: list[Result]) -> dict[str, Any]:
     return {
         "passed": sum(r.passed for r in results),
-        "total": len(results),
+        "total": len(graded(results)),
+        "skipped": sum(r.skipped is not None for r in results),
         "cases": [
             {
                 "id": r.case.id,
                 "passed": r.passed,
+                "skipped": r.skipped,
                 "expected": r.expected,
                 "failures": r.failures,
                 "answer": r.answer.to_json(),

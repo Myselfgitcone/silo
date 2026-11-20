@@ -3,7 +3,7 @@ from pathlib import Path
 import anyio
 import pytest
 
-from silo.evals import Case, expected_values, grade, load_cases, run_cases, summary_markdown
+from silo.evals import Case, applies, expected_values, grade, load_cases, run_cases, summary_markdown
 from tests.test_agent import ScriptedModel, reply, text, tool
 
 CASES = Path(__file__).parents[1] / "evals" / "cases.yml"
@@ -15,6 +15,55 @@ def test_every_truth_query_runs_against_the_lake(lake):
             lake.execute(case.truth, timeout_s=5)  # raises on a broken query
         else:
             assert case.mentions_any, case.id
+        if case.when:
+            lake.execute(case.when, timeout_s=5)
+
+
+def test_state_rankings_are_guarded_by_season():
+    guarded = {c.id for c in load_cases(CASES) if c.when}
+    assert guarded == {
+        "worst_corn_state_latest_week",
+        "best_corn_state_latest_week",
+        "worst_soybean_state_latest_week",
+    }
+    for case in load_cases(CASES):
+        if case.when:
+            assert "out of season" in case.skip
+
+
+def test_a_case_is_skipped_while_its_when_sql_finds_nothing(toolbox, settings, tmp_path):
+    from silo.budget import Budget
+
+    settings.state_dir = str(tmp_path)
+    off = Case(
+        "off",
+        "never asked",
+        truth="select 1 as n",
+        mentions=("{n}",),
+        when="select 1 from ref_symbols where 1 = 0",
+        skip="out of season",
+    )
+    on = Case(
+        "on",
+        "How many symbols?",
+        truth="select count(*) as n from ref_symbols",
+        mentions=("{n}",),
+        when="select 1 from ref_symbols limit 1",
+    )
+    assert not applies(off, toolbox.lake)
+    assert applies(on, toolbox.lake)
+    model = ScriptedModel(
+        reply(tool("run_query", sql="select count(*) from ref_symbols"), stop="tool_use"),
+        reply(text("There are 4 symbols.")),
+    )
+    results = anyio.run(run_cases, [off, on], toolbox, model, settings, Budget(tmp_path / "s.json", 1.0))
+    assert results[0].skipped == "out of season"
+    assert not results[0].passed
+    assert results[0].answer.steps == []  # the model was never called for it
+    assert results[1].passed
+    summary = summary_markdown(results)
+    assert "1/1 passed, 1 skipped" in summary
+    assert "| off | skip |" in summary
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,9 @@
 #
 # "Latest week" means the latest week any of USDA's 18 states reported, the same
 # rule the pct_good_excellent metric applies. Late in the season only states
-# outside that list keep reporting, so a bare max(week_ending) finds no rows.
+# outside that list keep reporting, so a bare max(week_ending) finds no rows,
+# and ranking two leftover states is not a question worth asking: a case with
+# `when` is skipped, and says so, while that SQL returns no row.
 
 cases:
   - id: worst_corn_state_latest_week
@@ -20,6 +22,16 @@ cases:
       order by pct_good_excellent, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
+    when: |
+      select 1
+      from fct_crop_condition_weekly
+      where commodity = 'CORN'
+        and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN')
+      group by week_ending
+      having count(distinct state_alpha) >= 10
+      order by week_ending desc
+      limit 1
+    skip: out of season, fewer than 10 of the 18 corn states reported in the latest week
 
   - id: best_corn_state_latest_week
     question: Which corn state had the highest share of corn rated good or excellent in the latest report?
@@ -34,6 +46,16 @@ cases:
       order by pct_good_excellent desc, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
+    when: |
+      select 1
+      from fct_crop_condition_weekly
+      where commodity = 'CORN'
+        and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'CORN')
+      group by week_ending
+      having count(distinct state_alpha) >= 10
+      order by week_ending desc
+      limit 1
+    skip: out of season, fewer than 10 of the 18 corn states reported in the latest week
 
   - id: worst_soybean_state_latest_week
     question: Which soybean state is in the worst condition right now?
@@ -48,6 +70,16 @@ cases:
       order by pct_good_excellent, state_alpha
       limit 1
     mentions: ["{state_alpha}", "{pct:.0f}"]
+    when: |
+      select 1
+      from fct_crop_condition_weekly
+      where commodity = 'SOYBEANS'
+        and state_alpha in (select state_alpha from ref_crop_progress_states where commodity = 'SOYBEANS')
+      group by week_ending
+      having count(distinct state_alpha) >= 10
+      order by week_ending desc
+      limit 1
+    skip: out of season, fewer than 10 of the 18 soybean states reported in the latest week
 
   - id: iowa_corn_latest
     question: What share of Iowa's corn was rated good or excellent in the most recent report?
